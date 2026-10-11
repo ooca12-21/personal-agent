@@ -15,3 +15,5 @@
 数据仅存当前浏览器 localStorage（pa-prototype-v1），不跨设备同步，不上传 GitHub。不连接 AI；任务拆解由用户填写。
 
 GitHub Pages 从 main 分支根目录发布 index.html、rules.js。可使用 python3 -m http.server 预览。
+
+子任务未写日期或只写时间默认今天；不继承上一项日期、不自动顺延。旧版无日期子任务在首次打开新版时固定到当天，后续不再滚动。
