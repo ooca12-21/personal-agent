@@ -2,10 +2,10 @@
 const $=s=>document.querySelector(s),M=AgentModel,escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateNow=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const addDays=(d,n)=>TaskRules.add(d,n),uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,9),today=dateNow();
-let state={tasks:[]},page='home',selectedDate=null,calendarMonth=today.slice(0,7),rawInput='',search='',dialogContext=null,dragSource=null,storageWarning=false;
+let state={tasks:[]},page='home',selectedDate=null,calendarMonth=today.slice(0,7),rawInput='',search='',dialogContext=null,dragSource=null,storageWarning=false,cloud=null;
 try{const old=JSON.parse(localStorage.getItem('pa-prototype-v1'));if(old&&Array.isArray(old.tasks))state=old}catch{}
 M.migrate(state,today);
-function save(){try{localStorage.setItem('pa-prototype-v1',JSON.stringify(state))}catch{storageWarning=true;toast('浏览器保存失败，请导出记录。')}}
+function save(){if(cloud){cloud.capture();return}try{localStorage.setItem('pa-prototype-v1',JSON.stringify(state))}catch{storageWarning=true;toast('浏览器保存失败，请导出记录。')}}
 function toast(s){$('#toast').textContent=s;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),4000)}
 function openDialog(html){$('#modal').innerHTML=html;$('#modal').showModal()}
 function closeDialog(){$('#modal').close();dialogContext=null}
@@ -41,3 +41,18 @@ document.addEventListener('dragover',e=>{const row=e.target.closest('[draggable=
 document.addEventListener('drop',e=>{const row=e.target.closest('[draggable=true]');if(!row||!dragSource)return;e.preventDefault();if(M.drop(state,dragSource.id,dragSource.subId,row.dataset.id,row.dataset.subId)){save();render()}dragSource=null;e.stopPropagation()});
 document.addEventListener('dragend',()=>dragSource=null);
 save();render();
+function cloudStatus(info){
+ const box=$('#cloud-panel');
+ box.innerHTML=`<div class="cloud-row"><span class="small">${info.user?'账号：'+escape(info.user.user_metadata?.user_name||info.user.email||'GitHub'):'登录后可在多设备同步'}</span><div class="cloud-actions">${info.user?'<button class="ghost" data-cloud="sync">同步</button><button class="ghost" data-cloud="logout">退出</button>':'<button class="ghost" data-cloud="login" '+(!info.available?'disabled':'')+'>GitHub 登录</button>'}</div></div><p class="small muted" role="status">${escape(info.status)}${info.issue?' · '+escape(info.issue):''}</p>${info.importAvailable?'<button class="ghost" data-cloud="import">合并此设备原有记录</button><button class="ghost" data-cloud="skip">暂不合并</button>':''}`;
+}
+cloud=AgentCloud.create({model:M,today:dateNow,get:()=>state,set:value=>{if(!AgentSyncCore.same(state,value)){state=value;render()}},switch:value=>{state=value;page='home';rawInput='';search='';closeDialog();render()},status:cloudStatus});
+$('#cloud-panel').addEventListener('click',async e=>{
+ const action=e.target.closest('[data-cloud]')?.dataset.cloud;
+ if(action==='login')await cloud.login();
+ if(action==='sync')await cloud.sync();
+ if(action==='logout')await cloud.logout();
+ if(action==='skip')cloud.skipImport();
+ if(action==='import')openDialog(`${head('合并此设备记录')}<p>把此设备原有的任务、备注、完成记录和已删除记录上传到当前登录的账号，其他设备也可以访问。云端已有任务会保留。</p><div class="actions"><button class="primary" id="confirm-local-import">确认合并</button><button class="ghost" data-action="close">取消</button></div>`);
+});
+$('#modal').addEventListener('click',e=>{if(e.target.id==='confirm-local-import'){cloud.importGuest();closeDialog();toast('已合并，联网后同步。')}});
+cloud.init();
