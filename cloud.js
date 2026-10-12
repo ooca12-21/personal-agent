@@ -1,10 +1,10 @@
 (function(root){
 'use strict';
 const C=root.AgentSyncCore,config=root.AgentCloudConfig;
-const GUEST='pa-prototype-v1',PREFIX='pa-account-v1:';
+const GUEST='pa-prototype-v1',PREFIX='pa-account-v1:',IMPORTED='pa-imported-v1:';
 function create(hooks){
- let client=null,user=null,epoch=0,flight=null,timer=null,base=C.empty(),revision=0,importHandled=false,status='仅保存在此设备',issue='',cacheIssue='';
- const emit=()=>hooks.status({user,status,issue:cacheIssue||issue,available:!!client,importAvailable:!!user&&!importHandled&&guestHasData()});
+ let client=null,user=null,epoch=0,flight=null,timer=null,base=C.empty(),revision=0,importHandled=false,status='仅保存在此设备',issue=root.location&&/[?&]error=/.test(root.location.search)?'GitHub 登录未成功，请重试；若持续失败请联系管理员检查登录配置。':'',cacheIssue='';
+ const emit=()=>{try{if(user&&localStorage.getItem(IMPORTED+user.id)==='yes')importHandled=true}catch{}return hooks.status({user,status,issue:cacheIssue||issue,available:!!client,importAvailable:!!user&&!importHandled&&guestHasData()})};
  const guest=()=>{try{return JSON.parse(localStorage.getItem(GUEST))}catch{return null}};
  const guestHasData=()=>{const g=guest();return !!g&&['tasks','history','trash'].some(k=>g[k]?.length)};
  function persist(){
@@ -59,8 +59,8 @@ function create(hooks){
  }
  async function login(){if(!client)return;const {error}=await client.auth.signInWithOAuth({provider:'github',options:{redirectTo:config.redirect}});if(error){issue=readable(error);emit()}}
  async function logout(){if(!client)return;persist();const {error}=await client.auth.signOut({scope:'local'});if(error){issue='退出失败，请重试';emit();return}switchUser(null)}
- function importGuest(){if(!user)return;const value=guest();if(!value)return;hooks.set(normalized(C.merge(C.empty(),normalized(value),hooks.get())));importHandled=true;capture()}
- function skipImport(){importHandled=true;persist();emit()}
+ function importGuest(){if(!user)return;const value=guest();if(!value)return;hooks.set(normalized(C.importDocument(hooks.get(),normalized(value))));importHandled=true;try{localStorage.setItem(IMPORTED+user.id,'yes')}catch{}capture()}
+ function skipImport(){importHandled=true;try{localStorage.setItem(IMPORTED+user.id,'yes')}catch{}persist();emit()}
  return {init,capture,sync,login,logout,importGuest,skipImport,info:()=>({user,status,issue,importHandled})};
 }
 root.AgentCloud={create};

@@ -30,6 +30,13 @@ function merge(base,local,remote){
  // A later synchronized edit wins when both devices edit the same field.
  return clone(local);
 }
+function importDocument(cloud,guest){
+ const incoming=clone(guest),deleted=new Set((cloud.trash||[]).flatMap(r=>[r.task.id,...(r.task.subtasks||[]).map(s=>s.id)]));
+ incoming.tasks=incoming.tasks.filter(t=>!deleted.has(t.id)).map(t=>({...t,subtasks:(t.subtasks||[]).filter(s=>!deleted.has(s.id))}));
+ incoming.history=incoming.history.filter(r=>!(cloud.removedHistoryIds||[]).includes(r.id));
+ // An existing cloud record keeps its current fields; unique local records join it.
+ return merge(empty(),cloud,incoming);
+}
 function valid(x){return object(x)&&Array.isArray(x.tasks)&&Array.isArray(x.history)&&Array.isArray(x.tags)&&Array.isArray(x.trash);}
 function empty(){return {tasks:[],history:[],tags:[],trash:[],removedHistoryIds:[],subtaskDateDefaultsApplied:true};}
 function normalize(x,model,today){
@@ -38,6 +45,6 @@ function normalize(x,model,today){
  for(const t of x.tasks)if(t.done)for(const s of t.subtasks||[])if(!s.done){s.done=true;s.completedAt=t.completedAt||null;if(!x.removedHistoryIds.includes(s.id)&&!x.history.some(r=>r.id===s.id))x.history.push({...clone(s),parentId:t.id,parentTitle:t.title,isSubtask:true});}
  return x;
 }
-const api={clone,same,merge,valid,empty,normalize};
+const api={clone,same,merge,valid,empty,normalize,importDocument};
 if(typeof module==='object'&&module.exports)module.exports=api;else root.AgentSyncCore=api;
 })(typeof window==='object'?window:globalThis);
