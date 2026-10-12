@@ -1,0 +1,23 @@
+(function(root){
+'use strict';
+const IMPORTANT={id:'important',name:'重要',color:'#cf4848'};
+const DEFAULT_TAGS=[IMPORTANT,{id:'study',name:'学习',color:'#4b81c4'},{id:'work',name:'工作',color:'#c39825'}];
+const clone=o=>JSON.parse(JSON.stringify(o));
+function ownDay(t,d){return !!t.date&&(t.endDate?t.date<=d&&t.endDate>=d:t.date===d)}
+function onDay(t,d){return ownDay(t,d)||(t.subtasks||[]).some(s=>!s.done&&ownDay(s,d))}
+function tags(t){return [...new Set([...(t.tags||[]),...(t.important?['important']:[])])]}
+function active(state,d){return state.tasks.filter(t=>!t.done&&(!d||onDay(t,d)))}
+function subs(t,d){return (t.subtasks||[]).filter(s=>!s.done&&(!d||ownDay(s,d)))}
+function isImportant(state,d){return active(state,d).some(t=>tags(t).includes('important')||(t.subtasks||[]).some(s=>!s.done&&ownDay(s,d)&&tags(s).includes('important')))}
+function record(state,t,parentTitle){if(!state.history.some(r=>r.id===t.id))state.history.push({...clone(t),parentTitle:parentTitle||'',isSubtask:!!parentTitle});}
+function migrate(state,today){state.tags=state.tags||clone(DEFAULT_TAGS);state.tags=state.tags.filter(t=>t.id!=='important');state.tags.unshift(clone(IMPORTANT));state.history=state.history||[];state.trash=state.trash||[];for(const t of state.tasks){t.tags=tags(t);t.note=t.note||'';t.subtasks=t.subtasks||[];for(const s of t.subtasks){s.tags=tags(s);if(!s.date&&!state.subtaskDateDefaultsApplied)s.date=today;if(s.done)record(state,s,t.title)}if(t.done)record(state,t)}state.subtaskDateDefaultsApplied=true;return state}
+function get(state,id,subId){const parent=state.tasks.find(t=>t.id===id);return {parent,item:subId?parent?.subtasks?.find(s=>s.id===subId):parent}}
+function complete(state,id,subId,at){const {parent,item}=get(state,id,subId);if(!item||parent.done||item.done)return false;item.done=true;item.completedAt=at;if(subId)record(state,item,parent.title);else{for(const child of parent.subtasks||[]){if(!child.done){child.done=true;child.completedAt=at;record(state,child,parent.title)}}record(state,parent)}return true}
+function remove(state,id,subId,newId){const {parent,item}=get(state,id,subId);if(!item||parent.done||item.done)return false;const list=subId?parent.subtasks:state.tasks,index=list.indexOf(item);state.trash.push({id:newId,parentId:subId?id:null,index,task:list.splice(index,1)[0]});return true}
+function restore(state,id){const index=state.trash.findIndex(r=>r.id===id);if(index<0)return false;const r=state.trash[index];const parent=r.parentId?state.tasks.find(t=>t.id===r.parentId):null;if(r.parentId&&(!parent||parent.done))return false;const list=r.parentId?(parent.subtasks=parent.subtasks||[]):state.tasks;list.splice(Math.min(r.index,list.length),0,r.task);state.trash.splice(index,1);return true}
+function move(state,id,subId,offset,day){const {parent,item}=get(state,id,subId);if(!item||parent.done||item.done)return false;const list=subId?parent.subtasks:state.tasks,visible=subId?subs(parent,day):active(state,day),i=visible.indexOf(item),other=visible[i+offset];if(!other)return false;const a=list.indexOf(item),b=list.indexOf(other);[list[a],list[b]]=[list[b],list[a]];return true}
+function drop(state,id,subId,targetId,targetSubId){if(!!subId!==!!targetSubId||(subId&&id!==targetId))return false;const {parent,item}=get(state,id,subId),target=get(state,targetId,targetSubId).item;if(!item||!target||item===target||parent.done||item.done||target.done)return false;const list=subId?parent.subtasks:state.tasks;const from=list.indexOf(item),to=list.indexOf(target);list.splice(from,1);list.splice(to,0,item);return true}
+function note(state,id,value){if(Array.from(value).length>300)return false;const t=state.tasks.find(t=>t.id===id),r=state.history.find(r=>r.id===id&&!r.isSubtask);if(!t&&!r)return false;if(t)t.note=value;if(r)r.note=value;return true}
+function matches(state,r,q){return [r.title,r.note||'',r.parentTitle||'',...tags(r).map(id=>state.tags.find(t=>t.id===id)?.name||'')].join(' ').toLowerCase().includes(q.toLowerCase())}
+const api={ownDay,onDay,tags,active,subs,isImportant,migrate,get,complete,remove,restore,move,drop,note,matches};if(typeof module==='object'&&module.exports)module.exports=api;else root.AgentModel=api;
+})(typeof window==='object'?window:globalThis);
