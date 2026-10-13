@@ -24,17 +24,17 @@ function create(hooks){
   try{
    const {data,error}=await client.from('agent_documents').select('revision,payload').eq('user_id',owner).maybeSingle();
    if(error)throw error;if(!alive())return;
-   const remote=data?normalized(data.payload):normalized(C.empty());
+   const remote=data?normalized(data.payload):normalized(C.empty());let needsUpgrade=!!data&&!C.same(data.payload,remote);
    const merged=normalized(C.merge(base,hooks.get(),remote));base=C.clone(remote);revision=data?.revision||0;hooks.set(merged);persist();
    for(let attempts=0;attempts<4;attempts++){
     const sent=C.clone(hooks.get());
-    if(revision&&C.same(sent,base)){status='已同步';issue='';emit();return}
+    if(revision&&!needsUpgrade&&C.same(sent,base)){status='已同步';issue='';emit();return}
     const response=await client.rpc('agent_sync',{expected_revision:revision,new_payload:sent});
     if(response.error)throw response.error;if(!alive())return;
     const row=response.data?.[0];if(!row)throw new Error('Missing sync response');
-    const cloud=normalized(row.payload);
+    const cloud=normalized(row.payload);needsUpgrade=!C.same(row.payload,cloud);
     hooks.set(normalized(C.merge(row.applied?sent:base,hooks.get(),cloud)));base=C.clone(cloud);revision=row.revision;persist();
-    if(row.applied&&C.same(hooks.get(),base)){status='已同步';issue='';emit();return}
+    if(row.applied&&!needsUpgrade&&C.same(hooks.get(),base)){status='已同步';issue='';emit();return}
    }
    status='等待合并 · 稍后重试';schedule();emit();
   }catch(error){if(alive()){status='未同步 · 本地已保存';issue=readable(error);emit()}}
